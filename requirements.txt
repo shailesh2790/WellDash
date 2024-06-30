@@ -4,4 +4,4 @@ plotly
 PyPDF2
 openpyxl
 pdfminer.six
-sklearn
+scikit-learn
