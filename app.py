@@ -28,7 +28,7 @@ def init_db():
                   data TEXT)''')
     conn.commit()
 
-@st.cache_data
+@st.cache_data(ttl=0)
 def get_files_from_db():
     conn = get_database_connection()
     c = conn.cursor()
@@ -90,23 +90,6 @@ def plot_pca_variance(explained_variance_ratio):
     fig.update_layout(title='PCA Explained Variance', xaxis_title='Principal Components', yaxis_title='Explained Variance Ratio')
     return fig
 
-# Main app function
-def main():
-    st.title("Advanced Interactive Data Dashboard")
-
-    init_db()
-
-    # Sidebar for navigation
-    st.sidebar.title("Navigation")
-    app_mode = st.sidebar.radio("Choose the app mode", ["Upload/Select Data", "Explore Data", "Advanced Analysis"])
-
-    if app_mode == "Upload/Select Data":
-        upload_select_data()
-    elif app_mode == "Explore Data":
-        explore_data()
-    elif app_mode == "Advanced Analysis":
-        advanced_analysis()
-
 def upload_select_data():
     st.header("Upload or Select Data")
 
@@ -124,17 +107,6 @@ def upload_select_data():
             conn = get_database_connection()
             cursor = conn.cursor()
 
-            # Drop the existing table if it exists
-            cursor.execute("DROP TABLE IF EXISTS files")
-
-            # Create a new table with the correct structure
-            columns = ", ".join([f'"{col}" TEXT' for col in df.columns])
-            cursor.execute(f'''CREATE TABLE files
-                               (id INTEGER PRIMARY KEY AUTOINCREMENT,
-                                filename TEXT,
-                                file_type TEXT,
-                                data TEXT)''')
-
             # Insert the data
             file_type = uploaded_file.name.split('.')[-1]
             data_json = df.to_json(orient='records')
@@ -149,21 +121,24 @@ def upload_select_data():
             st.session_state['df'] = df
             st.session_state['filename'] = uploaded_file.name
 
-    else:  # Select an existing file
-        files = get_files_from_db()
-        if files:
-            file_options = {f"{file[1]} ({file[2]})": file[0] for file in files}
-            selected_file = st.selectbox("Select a file", list(file_options.keys()))
-            
-            if selected_file:
-                file_id = file_options[selected_file]
-                with st.spinner("Loading data..."):
-                    df = get_file_data_from_db(file_id)
-                if df is not None:
-                    st.session_state['df'] = df
-                    st.session_state['filename'] = selected_file
-        else:
-            st.info("No files in the database. Please upload a file first.")
+            # Clear the cache to force a refresh of the file list
+            get_files_from_db.clear()
+
+    # Select an existing file
+    files = get_files_from_db()
+    if files:
+        file_options = {f"{file[1]} ({file[2]})": file[0] for file in files}
+        selected_file = st.selectbox("Select a file", list(file_options.keys()))
+        
+        if selected_file:
+            file_id = file_options[selected_file]
+            with st.spinner("Loading data..."):
+                df = get_file_data_from_db(file_id)
+            if df is not None:
+                st.session_state['df'] = df
+                st.session_state['filename'] = selected_file
+    else:
+        st.info("No files in the database. Please upload a file first.")
 
 @st.cache_data
 def get_data_summary(_df):
@@ -296,6 +271,22 @@ def advanced_analysis():
                 fig.add_trace(go.Scatter(x=df_time.index, y=df_time['SMA'], mode='lines', name=f'{window_size}-day SMA'))
                 fig.update_layout(title='Time Series with Simple Moving Average')
                 st.plotly_chart(fig)
+
+def main():
+    st.title("Advanced Interactive Data Dashboard")
+
+    init_db()
+
+    # Sidebar for navigation
+    st.sidebar.title("Navigation")
+    app_mode = st.sidebar.radio("Choose the app mode", ["Upload/Select Data", "Explore Data", "Advanced Analysis"])
+
+    if app_mode == "Upload/Select Data":
+        upload_select_data()
+    elif app_mode == "Explore Data":
+        explore_data()
+    elif app_mode == "Advanced Analysis":
+        advanced_analysis()
 
 if __name__ == "__main__":
     main()
